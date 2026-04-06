@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>ECG Edge Detection</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+    header { background: #141824; border-bottom: 1px solid #2d3748; padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 16px; font-weight: 600; color: #63b3ed; }
+    .badges { display: flex; gap: 6px; }
+    .badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+    .badge.edge { background: #1a365d; color: #63b3ed; border: 1px solid #2b6cb0; }
+    .badge.fog  { background: #322659; color: #b794f4; border: 1px solid #553c9a; }
+    main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+    .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+    .card-title { font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; font-weight: 500; }
+    .quick-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .qbtn { padding: 7px 16px; border-radius: 6px; border: 1px solid #2d3748; background: transparent; color: #a0aec0; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+    .qbtn:hover { border-color: #63b3ed; color: #63b3ed; }
+    .qbtn.normal   { border-color: #276749; color: #68d391; }
+    .qbtn.abnormal { border-color: #c53030; color: #fc8181; }
+    .qbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+    .feature-field { display: flex; flex-direction: column; gap: 4px; }
+    .feature-field label { font-size: 12px; font-weight: 600; color: #a0aec0; display: flex; justify-content: space-between; align-items: center; }
+    .imp-pill { font-size: 10px; color: #378ADD; background: #1a365d; padding: 1px 6px; border-radius: 10px; font-weight: 400; }
+    .feature-field input[type=number] { background: #0f1117; border: 1px solid #2d3748; border-radius: 6px; color: #e2e8f0; padding: 8px 10px; font-size: 13px; font-family: monospace; width: 100%; transition: border-color 0.15s; }
+    .feature-field input[type=number]:focus { outline: none; border-color: #63b3ed; }
+    .feature-field input[type=number].error { border-color: #fc8181; }
+    .feat-hint { font-size: 10px; color: #4a5568; }
+    .imp-bar-row { display: flex; align-items: center; gap: 6px; }
+    .imp-bar { height: 3px; border-radius: 2px; background: #378ADD; }
+    .imp-rank { font-size: 10px; color: #4a5568; }
+    .predict-btn { width: 100%; padding: 13px; background: #2b6cb0; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.15s; margin-bottom: 16px; }
+    .predict-btn:hover { background: #3182ce; }
+    .predict-btn:disabled { background: #2d3748; color: #4a5568; cursor: not-allowed; }
+    #error-msg   { font-size: 13px; color: #fc8181; margin-bottom: 10px; min-height: 18px; }
+    #loading-msg { font-size: 13px; color: #718096; margin-bottom: 10px; min-height: 18px; }
+    #status-banner { background: #1a2840; border: 1px solid #2b6cb0; border-radius: 8px; padding: 10px 16px; font-size: 13px; color: #63b3ed; margin-bottom: 16px; display: none; }
+    .result-card { border-radius: 10px; padding: 24px; background: #1a1f2e; border: 2px solid #2d3748; transition: border-color 0.4s; margin-bottom: 16px; }
+    .result-card.normal  { border-color: #276749; }
+    .result-card.anomaly { border-color: #c53030; }
+    .result-top { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+    .result-icon { width: 56px; height: 56px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; }
+    .result-icon.normal  { background: #1a3d2a; color: #68d391; }
+    .result-icon.anomaly { background: #3d1a1a; color: #fc8181; }
+    .result-icon.idle    { background: #2d3748; color: #718096; }
+    .result-label { font-size: 26px; font-weight: 700; }
+    .result-label.normal  { color: #68d391; }
+    .result-label.anomaly { color: #fc8181; }
+    .result-label.idle    { color: #4a5568; }
+    .result-sub { font-size: 13px; color: #718096; margin-top: 4px; }
+    .result-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+    .rmet { background: #0f1117; border-radius: 8px; padding: 12px 14px; }
+    .rmet .rl { font-size: 10px; color: #4a5568; text-transform: uppercase; letter-spacing:.05em; margin-bottom: 5px; }
+    .rmet .rv { font-size: 20px; font-weight: 600; font-family: monospace; color: #a0aec0; }
+    .bar-wrap { height: 5px; background: #2d3748; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s, background 0.3s; }
+    .r-layer { margin-top: 10px; font-size: 11px; color: #4a5568; font-style: italic; }
+    .hist-wrap { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+    .hist-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; background: #0f1117; border-radius: 6px; font-size: 12px; }
+    .hist-n { color: #4a5568; min-width: 32px; }
+    .hist-l { font-family: monospace; color: #a0aec0; min-width: 88px; }
+    .hist-c { color: #718096; flex: 1; }
+    .hist-s { font-weight: 600; font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+    .hist-s.normal  { background: #1a3d2a; color: #68d391; }
+    .hist-s.anomaly { background: #3d1a1a; color: #fc8181; }
+    .hist-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .hist-header span { font-size: 11px; color: #718096; text-transform: uppercase; letter-spacing:.06em; }
+    .hist-header button { background: none; border: none; color: #4a5568; font-size: 11px; cursor: pointer; }
+    .hist-header button:hover { color: #a0aec0; }
+    .fog-card { background: #1a1f2e; border: 1px solid #553c9a; border-radius: 10px; padding: 18px; margin-bottom: 16px; }
+    .fog-title { font-size: 11px; color: #b794f4; text-transform: uppercase; letter-spacing:.06em; margin-bottom: 12px; }
+    .fog-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #1a202c; font-size: 13px; }
+    .fog-row span:last-child { color: #b794f4; font-weight: 600; font-family: monospace; }
+    .fog-acts { display: flex; gap: 8px; margin-top: 12px; }
+    .fog-btn { padding: 7px 16px; border-radius: 6px; border: none; font-size: 12px; cursor: pointer; }
+    .fog-btn.r { background: #553c9a; color: #b794f4; }
+    .fog-btn.c { background: #2d3748; color: #a0aec0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>ECG Edge Anomaly Detection System</h1>
+  <div class="badges">
+    <span class="badge edge">Edge layer</span>
+    <span class="badge fog">Fog layer</span>
+  </div>
+</header>
+
+<main>
+
+  <div id="status-banner"></div>
+
+  <div class="card">
+    <div class="card-title">Enter top ECG feature values</div>
+    <div class="quick-row">
+      <button class="qbtn normal"   id="btn-normal"   onclick="fillSample('normal')">Load normal sample</button>
+      <button class="qbtn abnormal" id="btn-abnormal" onclick="fillSample('abnormal')">Load abnormal sample</button>
+      <button class="qbtn"          onclick="fillRandom()">Randomize values</button>
+      <button class="qbtn"          onclick="clearAll()">Clear all</button>
+    </div>
+    <div class="features-grid" id="features-grid">
+      <div style="color:#4a5568;font-size:13px;grid-column:1/-1;">
+        Loading feature metadata from model...
+      </div>
+    </div>
+  </div>
+
+  <div id="error-msg"></div>
+  <div id="loading-msg"></div>
+
+  <button class="predict-btn" id="predict-btn" onclick="predict()" disabled>
+    Predict at edge layer
+  </button>
+
+  <div class="result-card" id="result-card">
+    <div class="result-top">
+      <div class="result-icon idle" id="r-icon">?</div>
+      <div>
+        <div class="result-label idle" id="r-label">Awaiting prediction</div>
+        <div class="result-sub" id="r-sub">Enter feature values above and click predict</div>
+      </div>
+    </div>
+    <div class="result-metrics">
+      <div class="rmet">
+        <div class="rl">Reconstruction loss</div>
+        <div class="rv" id="rv-loss">—</div>
+        <div class="bar-wrap"><div class="bar-fill" id="b-loss" style="width:0%"></div></div>
+      </div>
+      <div class="rmet">
+        <div class="rl">Decision threshold</div>
+        <div class="rv" id="rv-thr">—</div>
+        <div class="rl" style="margin-top:6px;font-size:9px;">Youden's J statistic</div>
+      </div>
+      <div class="rmet">
+        <div class="rl">Confidence</div>
+        <div class="rv" id="rv-conf">—</div>
+        <div class="bar-wrap"><div class="bar-fill" id="b-conf" style="width:0%"></div></div>
+      </div>
+    </div>
+    <div class="r-layer" id="r-layer"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Reconstruction loss chart</div>
+    <canvas id="loss-chart" height="90"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="hist-header">
+      <span>Prediction history</span>
+      <button onclick="clearHistory()">Clear</button>
+    </div>
+    <div class="hist-wrap" id="hist-list">
+      <div style="font-size:13px;color:#4a5568;">No predictions yet.</div>
+    </div>
+  </div>
+
+  <div class="fog-card">
+    <div class="fog-title">Fog layer — patient health status</div>
+    <div id="fog-data" style="font-size:13px;color:#718096;">
+      Make predictions then click refresh to see health assessment.
+    </div>
+    <div class="fog-acts">
+      <button class="fog-btn r" onclick="loadFog()">Refresh fog summary</button>
+      <button class="fog-btn c" onclick="clearFog()">Clear fog data</button>
+    </div>
+  </div>
+
+</main>
+
+<script>
+var meta      = null;
+var sessionId = Math.random().toString(36).slice(2,10);
+var beatIndex = 0;
+var histLog   = [];
+var lossChart = null;
+
+function showBanner(msg, isOk) {
+  var b = document.getElementById('status-banner');
+  b.style.display      = 'block';
+  b.style.borderColor  = isOk ? '#276749' : '#2b6cb0';
+  b.style.color        = isOk ? '#68d391' : '#63b3ed';
+  b.textContent        = msg;
+}
+
+function showErr(msg)  { document.getElementById('error-msg').textContent   = msg; }
+function clearErrMsg() { document.getElementById('error-msg').textContent   = '';  }
+function showLoad(msg) { document.getElementById('loading-msg').textContent = msg; }
+function clearLoad()   { document.getElementById('loading-msg').textContent = '';  }
+function clearFieldErr(inp) { inp.classList.remove('error'); clearErrMsg(); }
+
+async function init() {
+  try {
+    var res = await fetch('/meta');
+    if (!res.ok) throw new Error('meta failed');
+    meta = await res.json();
+    buildForm(meta);
+    document.getElementById('predict-btn').disabled = false;
+    showBanner(
+      'Model ready — ' + meta.n_features + ' features loaded: ' + meta.feature_labels.join(', '),
+      true
+    );
+  } catch(e) {
+    document.getElementById('features-grid').innerHTML =
+      '<div style="color:#fc8181;grid-column:1/-1;">' +
+      'Cannot load /meta. Make sure python app.py is running on port 5000.</div>';
+  }
+}
+
+function buildForm(m) {
+  var grid   = document.getElementById('features-grid');
+  grid.innerHTML = '';
+  var maxImp = Math.max.apply(null, m.importances);
+  for (var i = 0; i < m.feature_labels.length; i++) {
+    var label  = m.feature_labels[i];
+    var imp    = m.importances[i];
+    var barW   = Math.round((imp / maxImp) * 80);
+    var impPct = (imp * 100).toFixed(3);
+    var div    = document.createElement('div');
+    div.className = 'feature-field';
+    div.innerHTML =
+      '<label>' + label + '<span class="imp-pill">' + impPct + '%</span></label>' +
+      '<div class="imp-bar-row">' +
+        '<div class="imp-bar" style="width:' + barW + 'px"></div>' +
+        '<span class="imp-rank">rank ' + (i+1) + '</span>' +
+      '</div>' +
+      '<input type="number" id="feat-' + i + '" step="0.0001" ' +
+        'placeholder="0.0000" oninput="clearFieldErr(this)">' +
+      '<span class="feat-hint">ECG signal value</span>';
+    grid.appendChild(div);
+  }
+}
+
+function fillSample(type) {
+  if (!meta) return;
+  var btnId = type === 'normal' ? 'btn-normal' : 'btn-abnormal';
+  document.getElementById(btnId).disabled = true;
+  showLoad('Loading real ' + type + ' sample from dataset...');
+  clearErrMsg();
+
+  fetch('/sample/' + type)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { showErr(data.error); return; }
+      for (var i = 0; i < data.values.length; i++) {
+        var inp = document.getElementById('feat-' + i);
+        if (inp) {
+          inp.value = data.values[i].toFixed(4);
+          inp.classList.remove('error');
+        }
+      }
+      showLoad(
+        'Loaded real ' + data.label_name + ' beat from dataset row ' +
+        data.row_index + '. Click Predict.'
+      );
+      setTimeout(clearLoad, 3000);
+    })
+    .catch(function() {
+      showErr('Could not fetch sample. Make sure mitbih_test.csv is in your project folder.');
+    })
+    .finally(function() {
+      document.getElementById(btnId).disabled = false;
+    });
+}
+
+function fillRandom() {
+  if (!meta) return;
+  for (var i = 0; i < meta.feature_labels.length; i++) {
+    var inp = document.getElementById('feat-' + i);
+    if (inp) inp.value = (Math.random() * 2 - 1).toFixed(4);
+  }
+  clearErrMsg();
+  showLoad('Random values loaded. Results may vary.');
+  setTimeout(clearLoad, 2000);
+}
+
+function clearAll() {
+  if (!meta) return;
+  for (var i = 0; i < meta.feature_labels.length; i++) {
+    var inp = document.getElementById('feat-' + i);
+    if (inp) { inp.value = ''; inp.classList.remove('error'); }
+  }
+  clearErrMsg();
+  clearLoad();
+  resetResult();
+}
+
+function collectFeatures() {
+  if (!meta) return null;
+  var vals = [];
+  var ok   = true;
+  for (var i = 0; i < meta.feature_labels.length; i++) {
+    var inp = document.getElementById('feat-' + i);
+    var v   = parseFloat(inp.value);
+    if (isNaN(v)) { inp.classList.add('error'); ok = false; }
+    else { inp.classList.remove('error'); vals.push(v); }
+  }
+  if (!ok) {
+    showErr('Please fill in all ' + meta.n_features + ' fields before predicting.');
+    return null;
+  }
+  return vals;
+}
+
+async function predict() {
+  clearErrMsg();
+  var features = collectFeatures();
+  if (!features) return;
+
+  var btn = document.getElementById('predict-btn');
+  btn.disabled = true;
+  showLoad('Running edge inference...');
+
+  try {
+    var res = await fetch('/predict', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        features:   features,
+        session_id: sessionId,
+        beat_index: beatIndex++
+      })
+    });
+    var data = await res.json();
+    if (data.error) { showErr('Error: ' + data.error); return; }
+    clearErrMsg();
+    renderResult(data);
+    addHistory(data);
+    updateChart(data);
+    loadFog();
+  } catch(e) {
+    showErr('Could not reach Flask. Is python app.py running on port 5000?');
+  } finally {
+    btn.disabled = false;
+    clearLoad();
+  }
+}
+
+function renderResult(d) {
+  var isA = d.is_anomaly;
+  document.getElementById('result-card').className = 'result-card ' + (isA ? 'anomaly' : 'normal');
+
+  var icon = document.getElementById('r-icon');
+  icon.className   = 'result-icon ' + (isA ? 'anomaly' : 'normal');
+  icon.textContent = isA ? '!' : 'OK';
+
+  var lbl = document.getElementById('r-label');
+  lbl.className   = 'result-label ' + (isA ? 'anomaly' : 'normal');
+  lbl.textContent = isA ? 'Anomalous beat detected' : 'Normal beat';
+
+  document.getElementById('r-sub').textContent = isA
+    ? 'Reconstruction loss exceeds threshold — arrhythmia pattern identified at edge layer.'
+    : 'Reconstruction loss is below threshold — normal sinus rhythm detected.';
+
+  document.getElementById('r-layer').textContent =
+    'Edge layer inference · session ' + d.session_id +
+    ' · result forwarded to fog node on port 5001';
+
+  document.getElementById('rv-loss').textContent = d.loss.toFixed(5);
+  document.getElementById('rv-thr').textContent  = d.threshold.toFixed(5);
+  document.getElementById('rv-conf').textContent = d.confidence + '%';
+
+  var lossPct = Math.min((d.loss / (d.threshold * 2)) * 100, 100).toFixed(1);
+  var bl = document.getElementById('b-loss');
+  bl.style.width      = lossPct + '%';
+  bl.style.background = isA ? '#fc8181' : '#63b3ed';
+
+  var bc = document.getElementById('b-conf');
+  bc.style.width      = d.confidence + '%';
+  bc.style.background = isA ? '#fc8181' : '#68d391';
+}
+
+function resetResult() {
+  document.getElementById('result-card').className  = 'result-card';
+  document.getElementById('r-icon').className       = 'result-icon idle';
+  document.getElementById('r-icon').textContent     = '?';
+  document.getElementById('r-label').className      = 'result-label idle';
+  document.getElementById('r-label').textContent    = 'Awaiting prediction';
+  document.getElementById('r-sub').textContent      = 'Enter feature values above and click predict';
+  document.getElementById('rv-loss').textContent    = '—';
+  document.getElementById('rv-thr').textContent     = '—';
+  document.getElementById('rv-conf').textContent    = '—';
+  document.getElementById('b-loss').style.width     = '0%';
+  document.getElementById('b-conf').style.width     = '0%';
+  document.getElementById('r-layer').textContent    = '';
+}
+
+function addHistory(d) {
+  histLog.unshift(d);
+  var list = document.getElementById('hist-list');
+  if (histLog.length === 1) list.innerHTML = '';
+  var row = document.createElement('div');
+  row.className = 'hist-row';
+  row.innerHTML =
+    '<span class="hist-n">#' + beatIndex + '</span>' +
+    '<span class="hist-l">loss: ' + d.loss.toFixed(5) + '</span>' +
+    '<span class="hist-c">conf: ' + d.confidence + '%</span>' +
+    '<span class="hist-s ' + (d.is_anomaly ? 'anomaly' : 'normal') + '">' +
+      (d.is_anomaly ? 'ANOMALY' : 'Normal') +
+    '</span>';
+  list.prepend(row);
+  if (list.children.length > 40) list.lastChild.remove();
+}
+
+function clearHistory() {
+  histLog = []; beatIndex = 0;
+  sessionId = Math.random().toString(36).slice(2,10);
+  document.getElementById('hist-list').innerHTML =
+    '<div style="font-size:13px;color:#4a5568;">No predictions yet.</div>';
+  if (lossChart) {
+    lossChart.data.labels = [];
+    lossChart.data.datasets.forEach(function(ds) {
+      ds.data = [];
+      if (ds.pointBackgroundColor) ds.pointBackgroundColor = [];
+    });
+    lossChart.update();
+  }
+}
+
+function updateChart(d) {
+  if (!lossChart) {
+    lossChart = new Chart(document.getElementById('loss-chart'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Loss', data: [],
+            borderColor: '#63b3ed',
+            backgroundColor: 'rgba(99,179,237,0.07)',
+            borderWidth: 1.5, pointRadius: 4,
+            pointBackgroundColor: [], fill: true, tension: 0.2
+          },
+          {
+            label: 'Threshold', data: [],
+            borderColor: '#f6ad55', borderWidth: 1.5,
+            borderDash: [5,4], pointRadius: 0, fill: false
+          }
+        ]
+      },
+      options: {
+        animation: false, responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: {
+            ticks: { color: '#718096', font: { size: 11 } },
+            grid:  { color: '#2d3748' }
+          }
+        }
+      }
+    });
+  }
+  lossChart.data.labels.push('#' + beatIndex);
+  lossChart.data.datasets[0].data.push(d.loss);
+  lossChart.data.datasets[0].pointBackgroundColor.push(
+    d.is_anomaly ? '#fc8181' : '#68d391'
+  );
+  lossChart.data.datasets[1].data.push(d.threshold);
+  if (lossChart.data.labels.length > 50) {
+    lossChart.data.labels.shift();
+    lossChart.data.datasets.forEach(function(ds) {
+      ds.data.shift();
+      if (ds.pointBackgroundColor) ds.pointBackgroundColor.shift();
+    });
+  }
+  lossChart.update('none');
+}
+
+function loadFog() {
+  fetch('/fog/summary')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        document.getElementById('fog-data').innerHTML =
+          '<span style="color:#fc8181">' + data.error +
+          ' — run: python fog_node.py in a second terminal.</span>';
+        return;
+      }
+      var sessions = data.sessions || {};
+      var keys     = Object.keys(sessions);
+      if (!keys.length) {
+        document.getElementById('fog-data').innerHTML =
+          '<span style="color:#4a5568">No sessions yet. Make a prediction first.</span>';
+        return;
+      }
+      var colorMap = {
+        green:  { bg:'#1a3d2a', border:'#276749', text:'#68d391' },
+        teal:   { bg:'#0d3330', border:'#0F6E56', text:'#4fd1c5' },
+        amber:  { bg:'#3d2e0a', border:'#854F0B', text:'#f6ad55' },
+        orange: { bg:'#3d1f0a', border:'#c05c00', text:'#fb923c' },
+        red:    { bg:'#3d1a1a', border:'#c53030', text:'#fc8181' },
+        gray:   { bg:'#2d3748', border:'#4a5568', text:'#a0aec0' }
+      };
+      var html = '';
+      keys.forEach(function(sid) {
+        var s = sessions[sid];
+        var h = s.health_status;
+        var c = colorMap[h.color] || colorMap.gray;
+
+        html +=
+          '<div style="background:' + c.bg + ';border:2px solid ' + c.border + ';' +
+          'border-radius:10px;padding:16px 18px;margin-bottom:14px;">' +
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">' +
+              '<div style="width:12px;height:12px;border-radius:50%;background:' + c.text + ';flex-shrink:0;"></div>' +
+              '<span style="font-size:20px;font-weight:700;color:' + c.text + ';">' + h.verdict + '</span>' +
+            '</div>' +
+            '<div style="font-size:13px;color:' + c.text + ';opacity:0.85;margin-bottom:6px;">' +
+              h.message +
+            '</div>' +
+            '<div style="font-size:12px;color:' + c.text + ';opacity:0.7;font-style:italic;' +
+            'border-top:1px solid ' + c.border + ';padding-top:8px;margin-top:8px;">' +
+              h.advice +
+            '</div>' +
+          '</div>';
+
+        html +=
+          '<div style="font-size:11px;color:#b794f4;font-weight:600;margin-bottom:8px;' +
+          'text-transform:uppercase;letter-spacing:.05em;">Session ' + sid + '</div>';
+
+        var rows = [
+          ['Total predictions',  s.total_beats],
+          ['Anomalies detected', s.anomalies],
+          ['Anomaly rate',       s.anomaly_rate + '%'],
+          ['Average loss',       s.avg_loss],
+          ['Peak loss',          s.max_loss],
+          ['Risk level',         h.risk_level.toUpperCase()],
+          ['Session started',    (s.started_at || '').slice(11,19)]
+        ];
+        rows.forEach(function(row) {
+          html +=
+            '<div class="fog-row">' +
+              '<span>' + row[0] + '</span>' +
+              '<span>' + row[1] + '</span>' +
+            '</div>';
+        });
+        html += '<div style="margin-bottom:14px"></div>';
+      });
+
+      if (data.recent_alerts && data.recent_alerts.length > 0) {
+        html +=
+          '<div style="font-size:11px;color:#fc8181;font-weight:600;margin-top:4px;' +
+          'margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em;">' +
+          'Recent anomaly alerts</div>';
+        data.recent_alerts.slice(-5).reverse().forEach(function(a) {
+          html +=
+            '<div style="display:flex;gap:10px;align-items:center;background:#3d1a1a;' +
+            'border-radius:6px;padding:7px 10px;margin-bottom:5px;font-size:12px;">' +
+              '<span style="color:#fc8181;min-width:60px;">Beat #' + a.beat + '</span>' +
+              '<span style="color:#a0aec0;font-family:monospace;flex:1;">loss: ' + a.loss + '</span>' +
+              '<span style="color:#4a5568;">' + (a.time || '').slice(11,19) + '</span>' +
+            '</div>';
+        });
+      }
+      document.getElementById('fog-data').innerHTML = html;
+    })
+    .catch(function() {
+      document.getElementById('fog-data').innerHTML =
+        '<span style="color:#fc8181">Fog node unreachable. ' +
+        'Run: python fog_node.py in a second terminal.</span>';
+    });
+}
+
+function clearFog() {
+  fetch('/fog/clear', { method: 'POST' })
+    .then(function() {
+      document.getElementById('fog-data').innerHTML = 'Fog data cleared.';
+    });
+}
+
+init();
+</script>
+</body>
+</html>
