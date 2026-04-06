@@ -91,10 +91,10 @@ Else → Normal
 
 ## 📊 Performance Metrics
 
-* Accuracy: ~90%
+* Accuracy: ~89%
 * Recall: High (important for healthcare)
 * Precision: Balanced (avoids false alarms)
-* AUC Score: ~0.90+
+* AUC Score: ~0.9321
 
 > The model is optimized to prioritize **recall**, ensuring abnormal cases are not missed.
 
